@@ -149,4 +149,4 @@ python -m pip install -U pyexiftool
 python src/metadata_analysis.py path/to/photo.jpg path/to/video.mp4
 ```
 
-Each file should be reported as `image` or `video` with a tag count. An error saying `exiftool.exe is not found` means ExifTool isn't on your `PATH`; recheck step 1.
+Each file should be reported as `image` or `video` with a score and any findings. Add `--json` for the full report. An error saying `exiftool.exe is not found` means ExifTool isn't on your `PATH`; recheck step 1.

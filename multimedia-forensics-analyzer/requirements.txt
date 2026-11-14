@@ -1,0 +1,6 @@
+PyExifTool==0.5.6
+Pillow
+opencv-python
+numpy
+pytest
+av
