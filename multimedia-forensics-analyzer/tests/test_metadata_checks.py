@@ -6,6 +6,7 @@ few that are marked as needing Pillow. Real files are tested in test_metadata_an
 Run from the multimedia-forensics-analyzer folder:  python -m pytest
 """
 
+from dataclasses import fields as dataclass_fields
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -26,7 +27,7 @@ CAPTURED = datetime(2024, 5, 1, 10, 0, tzinfo=UTC)
 
 
 def _meta(media_type="image", **fields) -> NormalizedMetadata:
-    values = dict.fromkeys(NormalizedMetadata.__dataclass_fields__)
+    values = dict.fromkeys(f.name for f in dataclass_fields(NormalizedMetadata))
     values.update(path="test", media_type=media_type, software=[], tags={})
     values.update(fields)
     return NormalizedMetadata(**values)
@@ -95,7 +96,8 @@ class TestRunChecks:
         results, _ = run_checks(CheckContext(_meta(), now=NOW))
         assert results["metadata_removed"].finding.check == "metadata_removed"
 
-    def test_crashing_check_becomes_a_warning(self, broken_check):
+    @pytest.mark.usefixtures("broken_check")
+    def test_crashing_check_becomes_a_warning(self):
         results, warnings = run_checks(CheckContext(_meta(), now=NOW))
         assert results["broken"].status == "not_applicable"
         assert warnings == ["broken could not run: boom"]
