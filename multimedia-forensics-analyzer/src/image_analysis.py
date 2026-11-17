@@ -3,8 +3,10 @@
 import cv2
 import numpy as np
 
-from compression_analysis import load_image
-
+try:  # imported as part of the src package (app.py, evaluation.py)
+    from .compression_analysis import load_image
+except ImportError:  # run directly, or with src/ on the path (tests/test_image_analysis.py)
+    from compression_analysis import load_image
 
 def compare_images(first_path, second_path):
     """Compare two same-sized images using pixel-difference measurements."""
