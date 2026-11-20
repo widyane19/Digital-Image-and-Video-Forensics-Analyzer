@@ -15,11 +15,12 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from src.metadata.metadata_extraction import UnsupportedMediaError
+from src.ai_summary import summarize
 from src.pipeline import analyze
 
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024
@@ -75,6 +76,18 @@ def analyze_upload(
         raise HTTPException(415, str(exc).replace(temp_path, file.filename or "file")) from exc
     finally:
         os.unlink(temp_path)
+
+
+@app.post("/api/summary")
+def summary(report: dict = Body(...)) -> dict:
+    """Write a plain-English summary of a report from /api/analyze.
+
+    Kept separate from /api/analyze so the results can be shown straight away
+    while the summary is generated. A plain `def`, so it runs in a worker thread.
+    """
+    if not isinstance(report.get("categories"), dict) or "verdict" not in report:
+        raise HTTPException(422, "Send the report returned by /api/analyze.")
+    return summarize(report)
 
 
 if FRONTEND_DIST.is_dir():
