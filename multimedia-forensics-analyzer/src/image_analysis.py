@@ -126,47 +126,6 @@ def region_iou(first_box, second_box):
     return float(_box_iou(first_box, second_box))
 
 
-def evaluate_copy_move_detection(detection_result, known_regions, iou_threshold=0.25):
-    """Compare detected boxes with ground-truth boxes and report precision/recall.
-
-    `known_regions` should contain every copied source and destination box. This is
-    region-level evaluation; image-level accuracy and false-positive rate need a
-    labeled dataset of both manipulated and untouched images.
-    """
-    if not 0 < iou_threshold <= 1:
-        raise ValueError("iou_threshold must be in (0, 1].")
-    predicted = []
-    for candidate in detection_result.get("candidate_regions", []):
-        predicted.extend([candidate["source"], candidate["destination"]])
-
-    unmatched_truth = list(known_regions)
-    true_positives = 0
-    for predicted_box in predicted:
-        best_index = None
-        best_score = iou_threshold
-        for index, truth_box in enumerate(unmatched_truth):
-            score = _box_iou(predicted_box, truth_box)
-            if score >= best_score:
-                best_score, best_index = score, index
-        if best_index is not None:
-            true_positives += 1
-            unmatched_truth.pop(best_index)
-
-    false_positives = len(predicted) - true_positives
-    false_negatives = len(unmatched_truth)
-    precision = true_positives / (true_positives + false_positives) if predicted else 0.0
-    recall = true_positives / (true_positives + false_negatives) if known_regions else 0.0
-    return {
-        "detected_regions": true_positives,
-        "true_positives": true_positives,
-        "false_positives": false_positives,
-        "false_negatives": false_negatives,
-        "precision": precision,
-        "recall": recall,
-        "all_detected": false_negatives == 0 and bool(known_regions),
-    }
-
-
 def edge_texture_analysis(image_path):
     """Return edge density and texture-strength measurements for visual comparison.
 
@@ -194,33 +153,3 @@ def create_match_visualization(image_path, detection_result, output_path=None):
         if not cv2.imwrite(str(output_path), cv2.cvtColor(image, cv2.COLOR_RGB2BGR)):
             raise OSError(f"Could not write visualization to {output_path}")
     return image
-
-
-def evaluate_manipulation_predictions(actual_labels, predicted_labels):
-    """Calculate image-level accuracy, precision, recall, and false-positive rate.
-
-    Labels must be 1 for manipulated and 0 for original, in matching dataset order.
-    Use this with predictions from a defined decision rule and labeled test images.
-    """
-    actual = np.asarray(actual_labels, dtype=int).ravel()
-    predicted = np.asarray(predicted_labels, dtype=int).ravel()
-    if actual.size == 0 or actual.shape != predicted.shape:
-        raise ValueError("Provide equally sized, non-empty label lists.")
-    if not np.isin(actual, [0, 1]).all() or not np.isin(predicted, [0, 1]).all():
-        raise ValueError("Labels must be 0 (original) or 1 (manipulated).")
-
-    true_positive = int(np.sum((actual == 1) & (predicted == 1)))
-    true_negative = int(np.sum((actual == 0) & (predicted == 0)))
-    false_positive = int(np.sum((actual == 0) & (predicted == 1)))
-    false_negative = int(np.sum((actual == 1) & (predicted == 0)))
-    total = actual.size
-    return {
-        "accuracy": (true_positive + true_negative) / total,
-        "precision": true_positive / (true_positive + false_positive) if true_positive + false_positive else 0.0,
-        "recall": true_positive / (true_positive + false_negative) if true_positive + false_negative else 0.0,
-        "false_positive_rate": false_positive / (false_positive + true_negative) if false_positive + true_negative else 0.0,
-        "true_positives": true_positive,
-        "true_negatives": true_negative,
-        "false_positives": false_positive,
-        "false_negatives": false_negative,
-    }

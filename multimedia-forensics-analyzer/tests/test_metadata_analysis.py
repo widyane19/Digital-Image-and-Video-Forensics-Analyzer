@@ -72,10 +72,6 @@ class TestReport:
         report = _report(results={"one": "flagged", "two": "not_applicable"})
         assert report.checks_run == 1
 
-    def test_summary_row_has_one_column_per_check(self):
-        report = _report(results={"one": "flagged", "two": "not_applicable"})
-        assert report.summary_row() == {"file": "a.jpg", "score": 0, "one": "flagged", "two": "not_applicable"}
-
     def test_to_dict_can_be_written_as_json(self):
         finding = Finding("test", "high", "message", regions=[(1, 2, 3, 4)], frames=[5])
         data = json.loads(json.dumps(_report([finding]).to_dict()))

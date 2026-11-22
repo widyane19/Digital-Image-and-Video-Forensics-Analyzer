@@ -95,6 +95,47 @@ Results will be compared across forensic techniques and manipulation types to in
 
 Where suitable ground-truth annotations are available, region-level or frame-level detection performance may also be evaluated.
 
+### Building the dataset
+
+`src/build_dataset.py` creates the controlled dataset from the team's originals.
+
+1. Put **unedited** originals, straight from a camera or phone, in `data/originals/images/` (photos) and `data/originals/videos/` (videos). Don't use files downloaded from social media: they're already stripped and re-encoded, so they aren't true originals.
+2. From the `multimedia-forensics-analyzer` folder, run:
+
+   ```bash
+   python -m src.build_dataset --data ../data
+   ```
+
+This writes modified copies to `data/manipulated/<type>/` and rewrites `data/labels.csv` to list every original and every copy:
+
+- **Photos:** one modified copy each, with the types taken in turn so each gets about the same number of files: `crop`, `copy_move`, `splice` (a patch from another original), `recompress` (JPEG quality 60) and `metadata_edit` (pixels unchanged; Software set to Adobe Photoshop and ModifyDate moved later).
+- **Videos:** one copy per type for each video: `frame_removal` (half a second cut, leaving a gap in the timestamps), `frame_duplication` (half a second repeated) and `frame_insertion` (half a second from another original).
+
+Every copy keeps the original's metadata, as a simple editor would. The same originals always give the same dataset (`--seed` changes it). Rerunning needs `--overwrite` to replace an existing `data/manipulated/`.
+
+**Limitations to mention in the write-up:**
+
+- The modified videos are re-encoded with FFmpeg, which tags them `Lavf`, so the editing-software check catches every one. That makes video edits look easier to detect than they would against a real video editor.
+- Every edited photo is re-saved, so it carries new compression as well as the edit itself.
+
+### Running the evaluation
+
+`src/evaluation.py` measures each technique against `data/labels.csv` (columns `file`, `label` and `manipulation_type`; any other columns are ignored). It uses only each technique's own decision for each file: flagged, not flagged or not applicable. It does not use the web app's suspicion score or verdict.
+
+From the `multimedia-forensics-analyzer` folder:
+
+```bash
+python -m src.evaluation --labels ../data/labels.csv --data ../data
+```
+
+**Output** (in `results/`):
+
+- `metrics.csv`: precision, recall, accuracy and false-positive rate for each technique. The final `all` row is the detector as a whole, which counts a file as flagged when any technique flags it.
+- `by_manipulation.csv`: the same four metrics for each technique and manipulation type. Each row uses that type's manipulated files plus all the originals.
+- `difficulty.csv`: manipulation types ranked from easiest to hardest to detect. For each type it gives the detector's recall and the single technique that catches it best.
+
+A file is left out of a technique's metrics when the technique doesn't apply to it, for example video checks on photos. A metric that can't be calculated (no files to divide by) is left blank, not reported as 0. Only techniques that make a yes/no decision are evaluated. Measurements without a decision, such as blockiness, quantization tables, the DCT histogram and edge/texture, are not evaluated yet.
+
 ## Technology and References
 
 The project will use Python and relevant multimedia-processing and scientific-computing libraries. Candidate tools include:
@@ -150,3 +191,65 @@ python src/metadata_analysis.py path/to/photo.jpg path/to/video.mp4
 ```
 
 Each file should be reported as `image` or `video` with a score and any findings. Add `--json` for the full report. An error saying `exiftool.exe is not found` means ExifTool isn't on your `PATH`; recheck step 1.
+
+## Running the Web App
+
+The app has two parts: a FastAPI backend (`app.py`) and a React + TypeScript frontend (`frontend/`, built with Vite). Complete the [Setup](#setup) steps above first.
+
+### Prerequisites
+
+- **Node.js** 20.19+ or 22.12+, which Vite requires. It comes with `npm`. Check with `node -v`.
+- The Python dependencies installed from the `multimedia-forensics-analyzer` folder:
+
+  ```bash
+  python -m pip install -r requirements.txt
+  ```
+
+- *(Optional)* An Anthropic API key for the AI-written summaries. Without it, the app still runs and shows a basic fallback summary.
+
+  ```bash
+  # Windows (PowerShell)
+  $env:ANTHROPIC_API_KEY = "your-key"
+  # macOS / Linux
+  export ANTHROPIC_API_KEY="your-key"
+  ```
+
+### Option A: Development mode (two terminals, live reload)
+
+**Terminal 1: start the backend** from the `multimedia-forensics-analyzer` folder:
+
+```bash
+python -m uvicorn app:app --reload
+```
+
+The API runs at <http://localhost:8000>. Check it at <http://localhost:8000/api/health>.
+
+**Terminal 2: start the frontend:**
+
+```bash
+cd frontend
+npm install      # first time only, or after package.json changes
+npm run dev
+```
+
+Open <http://localhost:5173>. The Vite dev server forwards `/api` requests to the backend on port 8000, so keep both terminals running. Changes to the frontend code reload in the browser automatically.
+
+### Option B: Single process (built frontend)
+
+Build the frontend once, then let FastAPI serve it:
+
+```bash
+cd frontend
+npm install
+npm run build    # outputs to frontend/dist
+cd ..
+python -m uvicorn app:app
+```
+
+Open <http://localhost:8000>. Rebuild with `npm run build` after changing any frontend code.
+
+### Troubleshooting
+
+- **Uploads fail or "Failed to fetch" in development:** the backend isn't running, or isn't on port 8000. Start it as shown in Terminal 1.
+- **`npm` is not recognized:** install Node.js from [nodejs.org](https://nodejs.org/), then reopen the terminal.
+- **Port 5173 already in use:** Vite picks the next free port and prints it. Use the URL shown in the terminal.
