@@ -28,10 +28,12 @@ try:  # imported as part of the src package (app.py, tests)
     from .image_analysis import orb_copy_move_detection
     from .metadata.metadata_extraction import open_exiftool
     from .metadata_analysis import analyze_file
+    from .video_analysis import analyze_video
 except ImportError:  # run directly: python src/evaluation.py
     from image_analysis import orb_copy_move_detection
     from metadata.metadata_extraction import open_exiftool
     from metadata_analysis import analyze_file
+    from video_analysis import analyze_video
 
 FLAGGED, NOT_FLAGGED, NOT_APPLICABLE = "flagged", "not_flagged", "not_applicable"
 ALL_TECHNIQUES = "all"   # the detector as a whole: flagged when any technique flags the file
@@ -113,6 +115,17 @@ def _image_detector(path: Path, et) -> dict[str, str]:  # pylint: disable=unused
         return {"image.copy_move": NOT_APPLICABLE}
     found = orb_copy_move_detection(str(path))["candidate_regions"]
     return {"image.copy_move": FLAGGED if found else NOT_FLAGGED}
+    
+# summary key from analyze_video(); technique name in the results tables
+VIDEO_COUNTS = {"duplicate_candidates": "duplicate_frames", "temporal_anomalies": "temporal_anomalies",
+                "repeated_sequences": "repeated_sequences", "inserted_clips": "inserted_clips"}
+
+def _video_detector(path: Path, et) -> dict[str, str]:  # pylint: disable=unused-argument
+    if _is_image(path):
+        return {f"video.{name}": NOT_APPLICABLE for name in VIDEO_COUNTS.values()}
+    summary = analyze_video(path)["summary"]
+    return {f"video.{name}": FLAGGED if summary[key] else NOT_FLAGGED
+            for key, name in VIDEO_COUNTS.items()}
 
 
 def _is_image(path: Path) -> bool:
@@ -131,6 +144,7 @@ def _is_image(path: Path) -> bool:
 DETECTORS: dict[str, Callable[[Path, object], dict[str, str]]] = {
     "metadata": _metadata_detector,
     "image": _image_detector,
+    "video": _video_detector
 }
 
 
