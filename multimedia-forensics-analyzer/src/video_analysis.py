@@ -171,6 +171,7 @@ def calculate_histogram_distance(frame_a, frame_b, bins=32):
 
 
 # CONSECTUTIVE-FRAME ANALYSIS
+MIN_LOCAL_MOTION = 1.0 # typical frame-to-frame change needed before a frame means anything
 def analyze_frame_similarity(
     frames, 
     duplicate_threshold=2.0,
@@ -208,15 +209,26 @@ def analyze_frame_similarity(
 
         comparisons.append(comparison)
 
-        if is_duplicate_candidate:
-            duplicate_findings.append({
-                "frame_index": current["frame_index"],
-                "timestamp": current["timestamp"],
-                "previous_timestamp": previous["timestamp"],
-                "difference_score": mean_difference,
-                "evidence": "Consecutive frames are unusually similar ",
-                "type": "possible_frame_duplication"
-            })
+       # A frame only counts as a repeat when the video is moving around it. In a still
+    # scene (or with a small object moving on a still background) every frame looks like
+    # the last one, so low difference alone proves nothing.
+    differences = np.array([c["mean_pixel_difference"] for c in comparisons], dtype=np.float64)
+    for i, comparison in enumerate(comparisons):
+        if not comparison["duplicate_candidate"]:
+            continue
+        window = np.concatenate([differences[max(0, i - 10):i], differences[i + 1:i + 11]])
+        local_motion = float(np.median(window)) if len(window) else 0.0
+        if local_motion < MIN_LOCAL_MOTION or comparison["mean_pixel_difference"] > local_motion / 3:
+            comparison["duplicate_candidate"] = False
+            continue
+        duplicate_findings.append({
+            "frame_index": comparison["current_frame"],
+            "timestamp": comparison["current_timestamp"],
+            "previous_timestamp": comparison["previous_timestamp"],
+            "difference_score": comparison["mean_pixel_difference"],
+            "evidence": "Frame is almost identical to the one before it while the video around it is moving",
+            "type": "possible_frame_duplication"
+        })
 
         if is_scene_change:
             scene_changes.append({
@@ -298,6 +310,68 @@ def analyze_temporal_consistency(
         "findings": findings
     }
 
+def find_repeated_blocks(frames, block_size=10, max_difference=3.0, min_motion=1.0):
+    """Find a run of frames that appears again later in the video.
+
+    Frames are shrunk to 32x32 and every run of `block_size` frames is compared with
+    every later run that does not overlap it. A match with real motion inside it is
+    reported once per pasted stretch, at the moment the repeat starts.
+    """
+    count = len(frames)
+    if count < 2 * block_size:
+        return []
+
+    small = np.stack([
+        cv2.resize(item["image"], (32, 32), interpolation=cv2.INTER_AREA) for item in frames
+    ]).astype(np.float32)
+
+    distance = np.empty((count, count), dtype=np.float32)
+    for i in range(count):
+        distance[i] = np.abs(small - small[i]).mean(axis=(1, 2))
+
+    runs = count - block_size + 1
+    window = np.zeros((runs, runs), dtype=np.float32)
+    for step in range(block_size):
+        window += distance[step:step + runs, step:step + runs]
+    window /= block_size
+
+    step_motion = np.abs(np.diff(small, axis=0)).mean(axis=(1, 2))
+    findings = []
+    used = set()
+    for i in range(runs):
+        if step_motion[i:i + block_size - 1].mean() < min_motion:
+            continue
+        for j in range(i + block_size, runs):
+            if window[i, j] <= max_difference and (j - i) not in used:
+                used.add(j - i)
+                findings.append({
+                    "frame_index": frames[j]["frame_index"],
+                    "timestamp": frames[j]["timestamp"],
+                    "original_timestamp": frames[i]["timestamp"],
+                    "difference_score": float(window[i, j]),
+                    "evidence": (f"A stretch of {block_size} frames starting at "
+                                 f"{frames[i]['timestamp']:.2f}s appears again at {frames[j]['timestamp']:.2f}s"),
+                    "type": "possible_repeated_sequence"
+                })
+                break
+    return findings
+
+# INSERTED CLIPS (foreign footage cut into the video)
+def find_inserted_clips(scene_changes, max_seconds=2.0):
+    """Two scene changes close together mean a short clip was cut in and out again."""
+    findings = []
+    for first, second in zip(scene_changes, scene_changes[1:]):
+        gap = second["timestamp"] - first["timestamp"]
+        if 0 < gap <= max_seconds:
+            findings.append({
+                "frame_index": first["frame_index"],
+                "timestamp": first["timestamp"],
+                "end_timestamp": second["timestamp"],
+                "evidence": (f"The picture changes completely at {first['timestamp']:.2f}s and again at "
+                             f"{second['timestamp']:.2f}s, which can mean a clip was inserted"),
+                "type": "possible_inserted_clip"
+            })
+    return findings
 
 # GROUPED FINDINGS W/ INTERVALS
 def group_findings(findings, gap_seconds=1.0):
@@ -374,9 +448,12 @@ def analyze_video(
         sensitivity=temporal_sensitivity
     )
 
+    repeated = find_repeated_blocks(frames)
+    inserted = find_inserted_clips(similarity_results["scene_changes"])
+    
     all_findings = (
         similarity_results["duplicate_findings"]
-        + temporal["findings"]
+        + temporal["findings"] + repeated + inserted
     )
 
     intervals = group_findings(all_findings)
@@ -400,12 +477,16 @@ def analyze_video(
             "duplicate_candidates": len(similarity_results["duplicate_findings"]),
             "scene_change_candidates": len(similarity_results["scene_changes"]),
             "temporal_anomalies": len(temporal["findings"]),
+            "repeated_sequences": len(repeated),
+            "inserted_clips": len(inserted),
             "suspicious_intervals": len(intervals)
         },
 
         "duplicate_findings": similarity_results["duplicate_findings"],
         "scene_changes": similarity_results["scene_changes"],
         "temporal_findings": temporal["findings"],
+        "repeated_findings": repeated,
+        "inserted_clip_findings": inserted,
         "temporal_threshold": temporal["threshold"],
         "suspicious_intervals": intervals,
         "comparisons": similarity_results["comparisons"],
