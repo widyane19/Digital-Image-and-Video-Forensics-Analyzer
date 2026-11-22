@@ -14,8 +14,6 @@ from image_analysis import (
     compare_images,
     create_match_visualization,
     edge_texture_analysis,
-    evaluate_copy_move_detection,
-    evaluate_manipulation_predictions,
     orb_copy_move_detection,
     region_iou,
 )
@@ -76,7 +74,7 @@ def test_region_iou_known_cases():
 
 
 def test_copy_move_detector_returns_valid_candidate_structure(copy_move_image):
-    path, source_box, destination_box = copy_move_image
+    path, _, _ = copy_move_image
     result = orb_copy_move_detection(path, min_matches=4)
 
     assert set(result) == {"match_count", "candidate_regions", "matches"}
@@ -88,46 +86,13 @@ def test_copy_move_detector_returns_valid_candidate_structure(copy_move_image):
         assert len(candidate["source"]) == 4
         assert len(candidate["destination"]) == 4
         assert len(candidate["displacement"]) == 2
-
-    # Detection quality can vary by OpenCV version; this fixture is used for manual
-    # evaluation too, rather than treating candidate output alone as proof.
-    evaluated = evaluate_copy_move_detection(
-        result, [source_box, destination_box], iou_threshold=0.10
-    )
-    assert 0.0 <= evaluated["precision"] <= 1.0
-    assert 0.0 <= evaluated["recall"] <= 1.0
-    assert evaluated["false_positives"] >= 0
-    assert evaluated["false_negatives"] >= 0
+    # Region-level scoring of this result is tested in tests/test_evaluation.py.
 
 
 def test_copy_move_detector_rejects_invalid_parameters(copy_move_image):
     path, _, _ = copy_move_image
     with pytest.raises(ValueError, match="min_matches"):
         orb_copy_move_detection(path, min_matches=1)
-
-
-def test_region_evaluation_matches_ground_truth():
-    detected = {
-        "candidate_regions": [{
-            "source": (10, 10, 20, 20),
-            "destination": (100, 100, 20, 20),
-        }]
-    }
-    result = evaluate_copy_move_detection(
-        detected, [(10, 10, 20, 20), (100, 100, 20, 20)]
-    )
-
-    assert result["true_positives"] == 2
-    assert result["false_positives"] == 0
-    assert result["false_negatives"] == 0
-    assert result["precision"] == 1.0
-    assert result["recall"] == 1.0
-    assert result["all_detected"] is True
-
-
-def test_region_evaluation_rejects_invalid_iou_threshold():
-    with pytest.raises(ValueError, match="iou_threshold"):
-        evaluate_copy_move_detection({"candidate_regions": []}, [], iou_threshold=0)
 
 
 def test_edge_texture_analysis_returns_valid_measurements(copy_move_image):
@@ -152,26 +117,3 @@ def test_match_visualization_returns_image_and_saves_file(copy_move_image, tmp_p
     assert output.is_file()
     with Image.open(output) as saved:
         assert saved.size == (320, 320)
-
-
-def test_manipulation_metrics_calculate_confusion_matrix_values():
-    result = evaluate_manipulation_predictions(
-        actual_labels=[1, 1, 0, 0],
-        predicted_labels=[1, 0, 1, 0],
-    )
-
-    assert result["true_positives"] == 1
-    assert result["true_negatives"] == 1
-    assert result["false_positives"] == 1
-    assert result["false_negatives"] == 1
-    assert result["accuracy"] == 0.5
-    assert result["precision"] == 0.5
-    assert result["recall"] == 0.5
-    assert result["false_positive_rate"] == 0.5
-
-
-def test_manipulation_metrics_validate_labels():
-    with pytest.raises(ValueError, match="equally sized"):
-        evaluate_manipulation_predictions([0, 1], [1])
-    with pytest.raises(ValueError, match=r"0 \(original\) or 1 \(manipulated\)"):
-        evaluate_manipulation_predictions([0, 2], [0, 1])

@@ -270,7 +270,7 @@ def _video_category(metadata: dict, is_video: bool) -> dict:
 # Verdict
 # ---------------------------------------------------------------------------
 
-LEVELS = ["no_strong_evidence", "some_signs", "likely_altered"]
+LEVELS = ["No signs of editing", "no_strong_evidence", "some_signs", "likely_altered"]
 
 
 def verdict(score: float, checks_run: int, copy_move_candidates: int) -> dict:
@@ -291,6 +291,8 @@ def verdict(score: float, checks_run: int, copy_move_candidates: int) -> dict:
     label = LEVELS[level]
     if level == 0 and checks_run <= FEW_CHECKS:
         label = "inconclusive"
+    elif level == 0 and checks_run > FEW_CHECKS:
+        label = "No signs of editing"
     return {"label": label, "score": score}
 
 

@@ -84,10 +84,6 @@ class MetadataReport:
             "warnings": self.warnings,
         }
 
-    def summary_row(self) -> dict:
-        """One row for the evaluation: the file, the score and one column per check."""
-        return {"file": self.path, "score": self.score, **self.results}
-
 
 def analyze_file(
     path: str | os.PathLike,
