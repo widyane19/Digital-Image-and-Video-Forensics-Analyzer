@@ -6,7 +6,6 @@ matplotlib
 pytest
 PyExifTool==0.5.6
 Pillow
-opencv-python
 av
 fastapi
 uvicorn[standard]
