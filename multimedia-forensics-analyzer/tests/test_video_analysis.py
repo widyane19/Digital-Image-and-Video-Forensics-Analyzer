@@ -57,7 +57,7 @@ def sample_videos(tmp_path):
     
     return {
         "normal": write_video("normal.mp4", normal),
-        "duplicate": write_video("duplicate.mp4", duplicate)
+        "duplicate": write_video("duplicate.mp4", duplicate),
         "static": write_video("static.mp4", static)
     }
 
