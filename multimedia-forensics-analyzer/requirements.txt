@@ -1,3 +1,9 @@
+numpy
+opencv-python-headless
+pandas
+scikit-learn
+matplotlib
+pytest
 PyExifTool==0.5.6
 Pillow
 opencv-python
