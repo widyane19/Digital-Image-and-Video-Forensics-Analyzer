@@ -1,1 +1,10 @@
 __pycache__/
+
+# Media in the dataset: too large (and too personal) for Git. Label files and
+# data/SOURCES.md stay, so the team can rebuild the same dataset.
+data/originals/
+data/manipulated/
+data/excluded/
+data/external/**/*
+!data/external/**/
+!data/external/**/labels.csv

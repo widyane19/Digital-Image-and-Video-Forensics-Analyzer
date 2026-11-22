@@ -289,10 +289,20 @@ class EvaluationResults:
     warnings: list[str]
 
 
-def evaluate(labels_path: str | os.PathLike, data_dir: str | os.PathLike | None = None,
+def evaluate(labels_paths: str | os.PathLike | list, data_dir: str | os.PathLike | None = None,
              detectors: dict[str, Callable] | None = None) -> EvaluationResults:
-    """Run every technique on the labelled dataset and return the result tables."""
-    files, warnings = load_labels(labels_path, data_dir)
+    """Run every technique on the labelled dataset and return the result tables.
+
+    `labels_paths` is one label file or a list of them (for example our generated set
+    plus a public dataset); their rows are measured together.
+    """
+    if isinstance(labels_paths, (str, os.PathLike)):
+        labels_paths = [labels_paths]
+    files, warnings = [], []
+    for labels_path in labels_paths:
+        more_files, more_warnings = load_labels(labels_path, data_dir)
+        files += more_files
+        warnings += more_warnings
     results, run_warnings = run_techniques(files, detectors)
     by_manipulation = manipulation_table(results)
     return EvaluationResults(technique_table(results), by_manipulation,
@@ -343,14 +353,16 @@ if __name__ == "__main__":
     import sys
 
     parser = argparse.ArgumentParser(description="Measure each technique against the labelled dataset.")
-    parser.add_argument("--labels", default=DEFAULT_DATA_DIR / "labels.csv", help="path to labels.csv")
+    parser.add_argument("--labels", nargs="+", default=[DEFAULT_DATA_DIR / "labels.csv"],
+                        help="one or more label files, measured together")
     parser.add_argument("--data", default=None, help="folder the label paths are relative to "
-                                                     "(default: the folder holding labels.csv)")
+                                                     "(default: the folder holding each label file)")
     parser.add_argument("--out", default=DEFAULT_RESULTS_DIR, help="folder for the result CSVs")
     args = parser.parse_args()
 
-    if not Path(args.labels).is_file():
-        sys.exit(f"Label file not found: {args.labels}")
+    for labels_file in args.labels:
+        if not Path(labels_file).is_file():
+            sys.exit(f"Label file not found: {labels_file}")
     try:
         evaluation = evaluate(args.labels, args.data)
     except FileNotFoundError as exc:
