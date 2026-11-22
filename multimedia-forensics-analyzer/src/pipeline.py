@@ -270,14 +270,16 @@ def _video_category(metadata: dict, is_video: bool) -> dict:
 # Verdict
 # ---------------------------------------------------------------------------
 
-LEVELS = ["No signs of editing", "no_strong_evidence", "some_signs", "likely_altered"]
+LEVELS = ["no_strong_evidence", "some_signs", "likely_altered"]
 
 
-def verdict(score: float, checks_run: int, copy_move_candidates: int) -> dict:
-    """Combine the metadata score and the pixel checks into one label.
+def verdict(score: float, checks_run: int, pixel_evidence: int = 0) -> dict:
+    """Combine the metadata score and the pixel/frame checks into one label.
 
-    Only the metadata checks produce a calibrated score. Copy-move candidates
-    raise the label by one level, because they are visual evidence of editing.
+    Only the metadata checks produce a calibrated score. `pixel_evidence` counts the
+    copy-move candidates and flagged video detectors; any of them raises the label by
+    one level, because they are visual evidence of editing. The label is "inconclusive"
+    when almost nothing could be checked and nothing was found.
     """
     if score >= 0.6:
         level = 2
@@ -285,15 +287,12 @@ def verdict(score: float, checks_run: int, copy_move_candidates: int) -> dict:
         level = 1
     else:
         level = 0
-    if copy_move_candidates:
+    if pixel_evidence:
         level = min(level + 1, 2)
 
-    label = LEVELS[level]
     if level == 0 and checks_run <= FEW_CHECKS:
-        label = "inconclusive"
-    elif level == 0 and checks_run > FEW_CHECKS:
-        label = "No signs of editing"
-    return {"label": label, "score": score}
+        return {"label": "inconclusive", "score": score}
+    return {"label": LEVELS[level], "score": score}
 
 
 # ---------------------------------------------------------------------------
