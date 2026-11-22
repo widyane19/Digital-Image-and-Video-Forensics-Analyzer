@@ -29,6 +29,7 @@ from .compression_analysis import (
 )
 from .image_analysis import create_match_visualization, edge_texture_analysis, orb_copy_move_detection
 from .metadata_analysis import analyze_file
+from .video_analysis import analyze_video
 
 # Visualizations are shrunk to this width before being sent to the browser.
 MAX_PREVIEW_WIDTH = 1200
@@ -254,17 +255,94 @@ def _compression_category(path: str, metadata: dict, is_image: bool, warnings: l
     checks = _metadata_checks(metadata, COMPRESSION_METADATA_CHECKS) + checks
     return _category(checks, failed=failed)
 
+def _video_chart(report: dict) -> str | None:
+    """Plot the change between consecutive frames, marking the suspicious moments."""
+    comparisons = report["comparisons"]
+    if not comparisons:
+        return None
+    import matplotlib  # noqa: PLC0415 - only needed for videos
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt  # noqa: PLC0415
 
-def _video_category(metadata: dict, is_video: bool) -> dict:
+    times = [c["current_timestamp"] for c in comparisons]
+    diffs = [c["mean_pixel_difference"] for c in comparisons]
+    fig, ax = plt.subplots(figsize=(8, 2.8), dpi=110)
+    ax.plot(times, diffs, linewidth=0.9, color="#4b6584")
+    if report["temporal_threshold"] is not None:
+        ax.axhline(report["temporal_threshold"], linestyle="--", linewidth=0.8, color="#888888")
+    for f in report["duplicate_findings"]:
+        ax.axvline(f["timestamp"], color="#e67e22", alpha=0.6, linewidth=0.8)
+    for f in report["temporal_findings"]:
+        ax.axvline(f["timestamp"], color="#c0392b", alpha=0.6, linewidth=0.8)
+    for f in report["repeated_findings"]:
+        ax.axvline(f["timestamp"], color="#8e44ad", alpha=0.7, linewidth=1.2)
+    for f in report["inserted_clip_findings"]:
+        ax.axvspan(f["timestamp"], f["end_timestamp"], color="#2980b9", alpha=0.25)
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Frame change")
+    ax.set_title("Orange: repeated frame, red: sudden jump, purple: repeated stretch, blue: inserted clip",
+                 fontsize=8)
+    fig.tight_layout()
+    buffer = BytesIO()
+    fig.savefig(buffer, format="png")
+    plt.close(fig)
+    return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
+def _video_category(path: str, metadata: dict, is_video: bool, warnings: list[str]) -> tuple[dict, int]:
+    """Frame timing metadata plus the frame-level detectors. Returns (category, flagged detectors)."""
     if not is_video:
-        return _category([], applicable=False, note="Video checks run on videos only.")
-    checks = _metadata_checks(metadata, VIDEO_METADATA_CHECKS)
-    checks.append(_check(
-        "frame_detectors", "not_applicable",
-        "Duplicate-frame, temporal-change and per-frame compression detectors are not built yet.",
-        name="Frame-level detectors"))
-    return _category(checks, note="Frame-level detectors are not built yet.")
+        return _category([], applicable=False, note="Video checks run on videos only."), 0
 
+    checks = _metadata_checks(metadata, VIDEO_METADATA_CHECKS)
+    failed, flagged = 0, 0
+    try:
+        report = analyze_video(path)
+        summary = report["summary"]
+        try:
+            chart = _video_chart(report)
+        except Exception as exc:  # noqa: BLE001 - a missing chart must not hide the findings
+            chart = None
+            warnings.append(f"Video chart failed: {exc}")
+
+        details = {"frames_processed": summary["frames_processed"],
+                   "intervals": [{"type": i["type"], "start": round(i["start_time"], 2),
+                                  "end": round(i["end_time"], 2), "count": i["finding_count"]}
+                                 for i in report["suspicious_intervals"]][:20]}
+        detectors = [
+            ("duplicate_frames", "Repeated frames", summary["duplicate_candidates"],
+             "{n} frame(s) are almost identical to the frame before them while the video around them "
+             "is moving, which can mean a frame was held or copied.", "No repeated frames found."),
+            ("temporal_anomalies", "Sudden frame changes", summary["temporal_anomalies"],
+             "{n} sudden jump(s) between frames, which can mean frames were cut out. "
+             "Fast motion can also cause this.", "No sudden jumps between frames."),
+            ("repeated_sequences", "Repeated stretches", summary["repeated_sequences"],
+             "{n} stretch(es) of video appear again later, which can mean footage was copied and pasted.",
+             "No repeated stretches of video found."),
+            ("inserted_clips", "Inserted clips", summary["inserted_clips"],
+             "{n} short clip(s) have a complete picture change at both ends, which can mean footage "
+             "from elsewhere was inserted.", "No short clips with a complete picture change at both ends."),
+        ]
+        for index, (check_id, name, count, flagged_text, passed_text) in enumerate(detectors):
+            visual = chart if index == 0 else None   # one chart marks every finding type
+            if count:
+                flagged += 1
+                checks.append(_check(check_id, "flagged", flagged_text.format(n=count), name=name,
+                                     severity="medium", details={**details, "candidates": count},
+                                     visualization=visual))
+            else:
+                checks.append(_check(check_id, "passed", passed_text, name=name, details=details,
+                                     visualization=visual))
+        checks.append(_check(
+            "scene_changes", "info",
+            f"{summary['scene_change_candidates']} scene change(s) found. These are normal cuts "
+            "and do not count as evidence by themselves.",
+            name="Scene changes", details={"count": summary["scene_change_candidates"]}))
+    except Exception as exc:  # noqa: BLE001 - one detector must not break the report
+        failed += 1
+        warnings.append(f"Frame analysis failed: {exc}")
+
+    return _category(checks, failed=failed), flagged
 
 # ---------------------------------------------------------------------------
 # Verdict
@@ -313,17 +391,19 @@ def analyze(path: str | os.PathLike, original_modified: datetime | None = None,
     warnings = list(metadata["warnings"])
 
     image, candidates = _image_category(path, is_image, warnings)
+    video, video_flags = _video_category(path, metadata, is_video, warnings)
     categories = {
         "metadata_analysis": _metadata_category(metadata),
         "image_analysis": image,
         "compression_analysis": _compression_category(path, metadata, is_image, warnings),
-        "video_analysis": _video_category(metadata, is_video),
+        "video_analysis": video,
+    }
     }
 
     return _json_safe({
         "file_name": display_name or os.path.basename(path),
         "media_type": media_type,
-        "verdict": verdict(metadata["score"], metadata["checks_run"], candidates),
+        "verdict": verdict(metadata["score"], metadata["checks_run"], candidates + video_flags),
         "categories": categories,
         "warnings": warnings,
     })
