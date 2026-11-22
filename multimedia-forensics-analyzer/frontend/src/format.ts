@@ -28,7 +28,7 @@ export const CATEGORY_DESCRIPTIONS: Record<CategoryKey, string> = {
   metadata_analysis: 'Dates, software and other information stored inside the file.',
   image_analysis: 'The pixels themselves: duplicated regions, edges and texture.',
   compression_analysis: 'How the file was compressed and whether it was saved more than once.',
-  video_analysis: 'Frame timing, frame counts and the audio and video tracks.',
+  video_analysis: 'Frame timing, repeated or inserted footage, and the audio and video tracks.',
 }
 
 export const CATEGORY_STATUS_LABELS: Record<CategoryStatus, string> = {
