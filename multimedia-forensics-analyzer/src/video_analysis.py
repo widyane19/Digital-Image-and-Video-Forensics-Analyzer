@@ -423,7 +423,7 @@ def analyze_video(
 def save_report(report, output_path):
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w", encodings="utf-8") as file:
+    with open(output_path, "w", encoding="utf-8") as file:
         json.dump(report, file, indent=4, ensure_ascii=False)
 
     return str(output_path)
