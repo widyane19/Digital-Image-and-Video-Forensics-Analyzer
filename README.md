@@ -92,6 +92,84 @@ Results will be compared across forensic techniques and manipulation types to in
 
 Where suitable ground-truth annotations are available, region-level or frame-level detection performance may also be evaluated.
 
+### Step by step: build the dataset and run the evaluation
+
+Run every command from the `multimedia-forensics-analyzer` folder. The sections after this one explain each step in detail.
+
+**0. Before you start**
+
+- Install ExifTool and check that `exiftool -ver` prints a version number. See the Setup section in `multimedia-forensics-analyzer/README.md`.
+- Install the Python packages:
+
+  ```bash
+  python -m pip install -r requirements.txt
+  ```
+
+**1. Add your originals**
+
+Put unedited photos straight from a phone or camera in `data/originals/images/`, and videos in `data/originals/videos/` (both folders are at the repository root). Then check that each file still has its camera information:
+
+```bash
+exiftool -T -FileName -Make -Model -FileSize ../data/originals/images ../data/originals/videos
+```
+
+- Move any file that shows `-` for both Make and Model to `data/excluded/`. Such a file was probably downloaded, screenshotted or exported, so it isn't a true original.
+  - **Exception:** keep files starting `vision_`. Android phones don't write Make or Model into their videos, so the VISION videos show `-` even though they are genuine.
+- Also move any file that is only a few bytes. That's an empty placeholder from a copy that didn't finish.
+- Check that no videos ended up in the photos folder.
+
+**2. Download the public samples** (optional; about 375 MB; slow from the VISION server)
+
+```bash
+python -m src.external_datasets vision --data ../data --dry-run    # see what it would take
+python -m src.external_datasets vision --data ../data              # 12 photos + 2 videos into data/originals/
+python -m src.external_datasets csvted --data ../data              # 20 videos into data/external/csvted/
+```
+
+**3. Build the manipulated copies** (about 15 minutes for 50 photos and 10 videos)
+
+```bash
+python -m src.build_dataset --data ../data --overwrite
+```
+
+This writes `data/manipulated/` and `data/labels.csv`. You only need `--overwrite` when `data/manipulated/` already exists.
+
+**4. Run the evaluation**
+
+```bash
+# our generated dataset
+python -m src.evaluation --labels ../data/labels.csv --out results/generated
+# CSVTED's real edits alone
+python -m src.evaluation --labels ../data/external/csvted/labels.csv --out results/csvted
+# everything together
+python -m src.evaluation --labels ../data/labels.csv ../data/external/csvted/labels.csv
+```
+
+Each run prints the results table and the easiest-to-hardest ranking. It also writes `metrics.csv`, `by_manipulation.csv` and `difficulty.csv` to its `--out` folder, or to `results/` if you leave out `--out`.
+
+**After adding or removing originals**, repeat steps 1, 3 and 4. The public samples don't need downloading again: files already downloaded are skipped.
+
+### Getting the public datasets
+
+`src/external_datasets` downloads small samples of two public datasets. Run it from the `multimedia-forensics-analyzer` folder. Add `--dry-run` to see the file list and sizes without downloading anything.
+
+```bash
+python -m src.external_datasets vision --data ../data    # about 250 MB
+python -m src.external_datasets csvted --data ../data    # about 125 MB
+```
+
+- **[VISION](https://lesc.dinfo.unifi.it/en/datasets)** (University of Florence, CC BY-SA 4.0):
+  - Takes 12 native photos from 12 different phones (`--photos`) and 2 native videos (`--videos`), and saves them in `data/originals/` with names starting `vision_`.
+  - These are **extra originals**: the next build makes their manipulated copies.
+  - WhatsApp and YouTube copies, and the files in the dataset's errata, are skipped.
+- **[CSVTED](https://huggingface.co/datasets/CardiffVisualComputing/CSVTED)** (COMSATS/Cardiff):
+  - Videos where **the dataset's authors** deleted, duplicated or inserted frames.
+  - Takes 5 scenes (`--scenes`), each with its original and one video per tampering type, and saves them in `data/external/csvted/`.
+  - It writes that folder's own `labels.csv`, which has an extra `frames` column giving the tampered frame range.
+  - Only those videos are read from the 9–11 GB archives. If the server stops allowing partial downloads, the command stops instead of downloading whole archives.
+
+The same `--seed` always gives the same sample. Each command records the citation, licence and the files it took in `data/SOURCES.md`. CSVTED's page states no licence, so check before publishing results.
+
 ### Building the dataset
 
 `src/build_dataset.py` creates the controlled dataset from the team's originals.
@@ -123,6 +201,15 @@ From the `multimedia-forensics-analyzer` folder:
 
 ```bash
 python -m src.evaluation --labels ../data/labels.csv --data ../data
+```
+
+`--labels` takes several label files and measures them together. Each file's paths are relative to its own folder, so leave out `--data`. Use `--out` to keep the runs apart:
+
+```bash
+# our edits and CSVTED's together
+python -m src.evaluation --labels ../data/labels.csv ../data/external/csvted/labels.csv
+# CSVTED alone, to compare real edits with our generated ones
+python -m src.evaluation --labels ../data/external/csvted/labels.csv --out results/csvted
 ```
 
 **Output** (in `results/`):

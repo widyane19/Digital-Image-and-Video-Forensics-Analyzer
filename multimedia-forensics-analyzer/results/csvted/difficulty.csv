@@ -1,0 +1,4 @@
+rank,manipulation_type,detector_recall,best_technique,best_technique_recall
+1,frame_duplication,1.0,metadata.editing_software,1.0
+2,frame_insertion,1.0,metadata.editing_software,1.0
+3,frame_removal,1.0,metadata.editing_software,1.0

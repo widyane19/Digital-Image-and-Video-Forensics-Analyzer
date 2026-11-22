@@ -1,0 +1,21 @@
+file,label,manipulation_type,frames
+originals/Standing Person.AVI,original,none,
+frame_duplication/015_Dup_171_185_Standing Person.avi,manipulated,frame_duplication,171-185
+frame_insertion/015_Ins_081_095_Standing Person.avi,manipulated,frame_insertion,81-95
+frame_removal/049_Del_121_169_Standing Person.avi,manipulated,frame_removal,121-169
+originals/Customer Dealing(E).mp4,original,none,
+frame_duplication/010_Dup_179_188_Customer Dealing(E).mp4,manipulated,frame_duplication,179-188
+frame_insertion/035_Ins_144_178_Customer Dealing(E).mp4,manipulated,frame_insertion,144-178
+frame_removal/044_Del_041_084_Customer Dealing(E).mp4,manipulated,frame_removal,41-84
+originals/CCTV Customer Footage(E).mp4,original,none,
+frame_duplication/010_Dup_061_070_CCTV Customer Footage(E).mp4,manipulated,frame_duplication,61-70
+frame_insertion/015_Ins_025_039_CCTV Customer Footage(E).mp4,manipulated,frame_insertion,25-39
+frame_removal/043_Del_006_048_CCTV Customer Footage(E).mp4,manipulated,frame_removal,6-48
+originals/Children.mp4,original,none,
+frame_duplication/010_Dup_076_085_Children.mp4,manipulated,frame_duplication,76-85
+frame_insertion/010_Ins_037_045_Children.mp4,manipulated,frame_insertion,37-45
+frame_removal/053_Del_057_109_Children.mp4,manipulated,frame_removal,57-109
+originals/Black Car.AVI,original,none,
+frame_duplication/010_Dup_151_160_Black Car.avi,manipulated,frame_duplication,151-160
+frame_insertion/010_Ins_033_042_Black Car.avi,manipulated,frame_insertion,33-42
+frame_removal/034_Del_053_086_Black Car.avi,manipulated,frame_removal,53-86

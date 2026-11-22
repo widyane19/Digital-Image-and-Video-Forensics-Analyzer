@@ -116,6 +116,41 @@ class TestLoadLabels:
         files, warnings = load_labels(labels)
         assert files == [] and warnings == ["gone.jpg: file not found, left out"]
 
+
+def _flag_edits(path, et):  # pylint: disable=unused-argument
+    return {"fake.check": "flagged" if "edit" in path.name else "not_flagged"}
+
+
+@requires_exiftool
+def test_several_label_files_give_the_same_results_as_one(tmp_path):
+    ours, public = tmp_path / "ours", tmp_path / "public" / "csvted"
+    rows = {ours: ["a.jpg,original,none", "a_edit.jpg,manipulated,crop", "b.jpg,original,none"],
+            public: ["v.mp4,original,none", "v_edit.mp4,manipulated,frame_removal,21-30"]}
+    for folder, lines in rows.items():
+        folder.mkdir(parents=True)
+        for line in lines:
+            (folder / line.split(",")[0]).write_bytes(b"x")
+        (folder / "labels.csv").write_text("file,label,manipulation_type,frames\n" + "\n".join(lines),
+                                           encoding="utf-8")
+    merged = tmp_path / "merged"
+    merged.mkdir()
+    lines = []
+    for folder, folder_lines in rows.items():
+        for line in folder_lines:
+            name = line.split(",")[0]
+            (merged / name).write_bytes(b"x")
+            lines.append(line)
+    (merged / "labels.csv").write_text("file,label,manipulation_type,frames\n" + "\n".join(lines),
+                                       encoding="utf-8")
+
+    detectors = {"fake": _flag_edits}
+    combined = evaluate([ours / "labels.csv", public / "labels.csv"], detectors=detectors)
+    single = evaluate(merged / "labels.csv", detectors=detectors)
+
+    assert combined.warnings == []
+    assert combined.techniques == single.techniques
+    assert combined.by_manipulation == single.by_manipulation
+
     @pytest.mark.parametrize("row, message", [
         ("a.jpg,fake,none", "label must be"),
         ("a.jpg,original,crop", "original file must have"),

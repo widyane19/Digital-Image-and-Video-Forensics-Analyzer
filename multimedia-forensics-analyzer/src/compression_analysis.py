@@ -9,7 +9,10 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageChops, ImageEnhance, ImageOps, UnidentifiedImageError
 
-SUPPORTED_FORMATS = {"JPEG", "PNG", "BMP", "TIFF", "WEBP"}
+# MPO is a JPEG with extra pictures attached (iPhone photos are saved this way);
+# Pillow reads its first picture, which is the photo itself.
+JPEG_FORMATS = {"JPEG", "MPO"}
+SUPPORTED_FORMATS = JPEG_FORMATS | {"PNG", "BMP", "TIFF", "WEBP"}
 
 
 def validate_image(image_path):
@@ -117,7 +120,7 @@ def jpeg_quantization_tables(image_path):
     """Return JPEG quantization tables, or None for a non-JPEG image."""
     validate_image(image_path)
     with Image.open(image_path) as image:
-        if image.format != "JPEG":
+        if image.format not in JPEG_FORMATS:
             return None
         tables = image.quantization
         if not tables:
