@@ -52,7 +52,7 @@ def validate_video(video_path):
 
     return {
         "video path": video_path,
-        "fps": float(fps)
+        "fps": float(fps),
         "frame_count": frame_count,
         "width": width,
         "height": height,
@@ -88,22 +88,26 @@ def extract_frames(video_path, sample_every=1, resize_width=320):
             height, width = frame.shape[:2]
             new_height = max(1, round(height * resize_width / width))
 
-            resized = cv2.resize(frame,(resize_width, new_height),interpolation=cv2.INTER_AREA)
+            resized = cv2.resize(
+                frame,
+                (resize_width, new_height),
+                interpolation=cv2.INTER_AREA
+            )
 
-            gray = cv2.cvtColor(resized,cv2.COLOR_BGR2GRAY)
+            gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
 
             timestamp = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
 
             if timestamp < 0 or (timestamp == 0 and frame_index > 0):
-                timestamp = (frame_index / fps if fps > 0 else None)
-            
+                timestamp = frame_index / fps if fps > 0 else None
+
             frames.append({
                 "frame_index": frame_index,
                 "timestamp": float(timestamp),
                 "image": gray
             })
 
-            frame_index += 1
+        frame_index += 1
 
     cap.release()
 
@@ -126,7 +130,7 @@ def calculate_frame_difference(frame_a, frame_b):
     difference = np.abs(frame_a.astype(np.float32) - frame_b.astype(np.float32))
     return float(np.mean(difference))
 
-def calculate_changed_pixel_ratio(frame_a, frame_b, pixelthreshold=8):
+def calculate_changed_pixel_ratio(frame_a, frame_b, pixel_threshold=8):
     """
     The calculate_changed_pixel_ratio() function calculates the porportion of pixels that 
         changed by more than pixel_threshold intesity levels.
@@ -159,6 +163,7 @@ def calculate_histogram_distance(frame_a, frame_b, bins=32):
     hist_a /= max(hist_a.sum(), 1)
     hist_b /= max(hist_b.sum(), 1)
 
+    coefficient = np.sum(np.sqrt(hist_a * hist_b))
     coefficient = np.clip(coefficient, 0.0, 1.0)
     distance = np.sqrt(1.0 - coefficient)
 
@@ -192,7 +197,7 @@ def analyze_frame_similarity(
         comparison = {
             "previous_frame": previous["frame_index"],
             "current_frame": current["frame_index"],
-            "previous_timestamp": previous["timestamp"]
+            "previous_timestamp": previous["timestamp"],
             "current_timestamp": current["timestamp"],
             "mean_pixel_difference": mean_difference,
             "changed_pixel_ratio": changed_ratio,
@@ -207,7 +212,7 @@ def analyze_frame_similarity(
             duplicate_findings.append({
                 "frame_index": current["frame_index"],
                 "timestamp": current["timestamp"],
-                "previous_timestamp": previous["timestamp"]
+                "previous_timestamp": previous["timestamp"],
                 "difference_score": mean_difference,
                 "evidence": "Consecutive frames are unusually similar ",
                 "type": "possible_frame_duplication"
@@ -282,7 +287,7 @@ def analyze_temporal_consistency(
                 "previous_timestamp": item["previous_timestamp"],
                 "difference_score": item["mean_pixel_difference"],
                 "threshold": float(threshold),
-                "evidence": "Unusually large consecutive frame change"
+                "evidence": "Unusually large consecutive frame change",
                 "type": "temporal_inconsistency"
             })
 
@@ -290,7 +295,7 @@ def analyze_temporal_consistency(
         "baseline_median": median,
         "baseline_mad": mad,
         "threshold": float(threshold),
-        "findings": finndings
+        "findings": findings
     }
 
 
@@ -302,7 +307,7 @@ def group_findings(findings, gap_seconds=1.0):
     grouped = []
     sorted_findings = sorted(
         findings,
-        key=lamda item: (
+        key=lambda item: (
             item["type"],
             item["timestamp"]
         )
@@ -340,8 +345,8 @@ def group_findings(findings, gap_seconds=1.0):
 
 # COMPLETE VIDEO ANALYSIS
 def analyze_video(
-    video_path, 
-    sample_every=1, 
+    video_path,
+    sample_every=1,
     resize_width=320,
     duplicate_threshold=2.0,
     pixel_threshold=8,
@@ -350,28 +355,36 @@ def analyze_video(
 ):
     metadata = validate_video(video_path)
 
-    frames = extract_frames(video_path, sample_every=sample_every, resize_width=resize_width)
-    
+    frames = extract_frames(
+        video_path,
+        sample_every=sample_every,
+        resize_width=resize_width
+    )
+
     similarity_results = analyze_frame_similarity(
-        frames, 
+        frames,
         duplicate_threshold=duplicate_threshold,
         pixel_threshold=pixel_threshold,
         scene_threshold=scene_threshold
     )
 
     temporal = analyze_temporal_consistency(
-        similaraity["comparisons"],
+        similarity_results["comparisons"],
         scene_threshold=scene_threshold,
         sensitivity=temporal_sensitivity
     )
 
-    all_findings = similaraity["duplicate_findings"] + temporal["findings"]
+    all_findings = (
+        similarity_results["duplicate_findings"]
+        + temporal["findings"]
+    )
 
     intervals = group_findings(all_findings)
 
     return {
         "video_path": str(video_path),
         "metadata": metadata,
+
         "analysis_settings": {
             "sample_every": sample_every,
             "resize_width": resize_width,
@@ -380,24 +393,27 @@ def analyze_video(
             "scene_threshold": scene_threshold,
             "temporal_sensitivity": temporal_sensitivity
         },
+
         "summary": {
             "frames_processed": len(frames),
-            "comparasions_performed": len (similaraity["comparasions"]),
-            "duplicate_candidates": len(similaraity["duplicate_findings"]),
-            "scene_change_candidates": len(similaraity["scene_changes"]),
+            "comparisons_performed": len(similarity_results["comparisons"]),
+            "duplicate_candidates": len(similarity_results["duplicate_findings"]),
+            "scene_change_candidates": len(similarity_results["scene_changes"]),
             "temporal_anomalies": len(temporal["findings"]),
             "suspicious_intervals": len(intervals)
         },
-        "duplicate_findings": similaraity["duplicate_findings"],
-        "scene_changes": similaraity["scene_changes"],
+
+        "duplicate_findings": similarity_results["duplicate_findings"],
+        "scene_changes": similarity_results["scene_changes"],
         "temporal_findings": temporal["findings"],
         "temporal_threshold": temporal["threshold"],
         "suspicious_intervals": intervals,
-        "comparisons": similaraity["comparisons"],
+        "comparisons": similarity_results["comparisons"],
+
         "limitations": [
             "Similar frames can occur naturally in static scenes.",
             "Scene changes are not automatically evidence of manipulation.",
-            "Compression can affect pixel level comparasions.",
+            "Compression can affect pixel level comparisons.",
             "Thresholds require calibration on labeled videos.",
             "This module identifies potential anomalies, not definitive proof."
         ]
@@ -407,7 +423,7 @@ def analyze_video(
 def save_report(report, output_path):
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open (output_path, "w", encodings="utf-8") as file:
+    with open(output_path, "w", encodings="utf-8") as file:
         json.dump(report, file, indent=4, ensure_ascii=False)
 
     return str(output_path)
