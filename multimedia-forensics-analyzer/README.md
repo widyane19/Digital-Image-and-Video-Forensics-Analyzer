@@ -221,7 +221,26 @@ python -m src.evaluation --labels ../data/external/csvted/labels.csv --out resul
 - `by_manipulation.csv`: the same four metrics for each technique and manipulation type. Each row uses that type's manipulated files plus all the originals.
 - `difficulty.csv`: manipulation types ranked from easiest to hardest to detect. For each type it gives the detector's recall and the single technique that catches it best.
 
-A file is left out of a technique's metrics when the technique doesn't apply to it, for example video checks on photos. A metric that can't be calculated (no files to divide by) is left blank, not reported as 0. Only techniques that make a yes/no decision are evaluated. Measurements without a decision, such as blockiness, quantization tables, the DCT histogram and edge/texture, are not evaluated yet.
+A file is left out of a technique's metrics when the technique doesn't apply to it, for example video checks on photos. A metric that can't be calculated (no files to divide by) is left blank, not reported as 0. Only techniques that make a yes/no decision are evaluated:
+
+- the metadata checks (`metadata.*`)
+- copy-move detection (`image.copy_move`)
+- the frame-level video checks (`video.duplicate_frames`, `video.repeated_sequences`, `video.inserted_clips` and `video.temporal_anomalies`). Each is flagged when `video_analysis.py` finds at least one case.
+
+Measurements without a decision, such as blockiness, quantization tables, the DCT histogram and edge/texture, are not evaluated yet.
+
+### Running the tests
+
+From the `multimedia-forensics-analyzer` folder (not from inside `tests/`):
+
+```bash
+python -m pytest                                        # every test
+python -m pytest tests/test_metadata_checks.py          # one file
+python -m pytest tests/test_metadata_checks.py -k gps   # tests whose names contain "gps"
+python -m pytest --ignore=tests/test_build_dataset.py   # skip the slower dataset tests
+```
+
+`pytest.ini` points pytest at `tests/` and makes `src` importable. Tests that need ExifTool are skipped if it isn't on your `PATH`.
 
 ## Technology and References
 
@@ -340,3 +359,8 @@ Open <http://localhost:8000>. Rebuild with `npm run build` after changing any fr
 - **Uploads fail or "Failed to fetch" in development:** the backend isn't running, or isn't on port 8000. Start it as shown in Terminal 1.
 - **`npm` is not recognized:** install Node.js from [nodejs.org](https://nodejs.org/), then reopen the terminal.
 - **Port 5173 already in use:** Vite picks the next free port and prints it. Use the URL shown in the terminal.
+
+To run all tests:
+```bash
+cd multimedia-forensics-analyzer
+python -m pytest

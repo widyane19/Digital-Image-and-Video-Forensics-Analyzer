@@ -15,4 +15,8 @@ metadata.modified_after_capture,,,1.0,0.0
 metadata.preview_mismatch,,,,
 metadata.size_mismatch,,0.0,0.25,0.0
 metadata.steady_frame_rate,0.0,0.0,0.2,0.2
-all,0.8333,1.0,0.85,0.6
+video.duplicate_frames,0.8571,0.4,0.5,0.2
+video.inserted_clips,,0.0,0.25,0.0
+video.repeated_sequences,0.8,0.2667,0.4,0.2
+video.temporal_anomalies,1.0,0.1333,0.35,0.0
+all,0.7895,1.0,0.8,0.8

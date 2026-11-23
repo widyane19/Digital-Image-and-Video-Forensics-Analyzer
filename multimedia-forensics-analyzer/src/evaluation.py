@@ -28,10 +28,12 @@ try:  # imported as part of the src package (app.py, tests)
     from .image_analysis import orb_copy_move_detection
     from .metadata.metadata_extraction import open_exiftool
     from .metadata_analysis import analyze_file
+    from .video_analysis import analyze_video
 except ImportError:  # run directly: python src/evaluation.py
     from image_analysis import orb_copy_move_detection
     from metadata.metadata_extraction import open_exiftool
     from metadata_analysis import analyze_file
+    from video_analysis import analyze_video
 
 FLAGGED, NOT_FLAGGED, NOT_APPLICABLE = "flagged", "not_flagged", "not_applicable"
 ALL_TECHNIQUES = "all"   # the detector as a whole: flagged when any technique flags the file
@@ -115,6 +117,24 @@ def _image_detector(path: Path, et) -> dict[str, str]:  # pylint: disable=unused
     return {"image.copy_move": FLAGGED if found else NOT_FLAGGED}
 
 
+# Video technique -> the count in analyze_video()'s summary that decides it.
+VIDEO_TECHNIQUES = {
+    "video.duplicate_frames": "duplicate_candidates",
+    "video.repeated_sequences": "repeated_sequences",
+    "video.inserted_clips": "inserted_clips",
+    "video.temporal_anomalies": "temporal_anomalies",
+}
+
+
+def _video_detector(path: Path, et) -> dict[str, str]:  # pylint: disable=unused-argument
+    """Frame-level checks: flagged when video_analysis finds at least one of each kind."""
+    if _is_image(path):
+        return dict.fromkeys(VIDEO_TECHNIQUES, NOT_APPLICABLE)
+    summary = analyze_video(path)["summary"]
+    return {technique: FLAGGED if summary[count] else NOT_FLAGGED
+            for technique, count in VIDEO_TECHNIQUES.items()}
+
+
 def _is_image(path: Path) -> bool:
     from PIL import Image, UnidentifiedImageError  # pylint: disable=import-outside-toplevel
     try:
@@ -131,6 +151,7 @@ def _is_image(path: Path) -> bool:
 DETECTORS: dict[str, Callable[[Path, object], dict[str, str]]] = {
     "metadata": _metadata_detector,
     "image": _image_detector,
+    "video": _video_detector,
 }
 
 

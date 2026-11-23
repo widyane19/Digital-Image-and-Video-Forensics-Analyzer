@@ -21,7 +21,7 @@ from datetime import datetime
 from io import BytesIO
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from .compression_analysis import (
     compression_diagnostics, create_compression_visualization, dct_histogram_analysis,
@@ -29,6 +29,7 @@ from .compression_analysis import (
 )
 from .image_analysis import create_match_visualization, edge_texture_analysis, orb_copy_move_detection
 from .metadata_analysis import analyze_file
+from .video_analysis import analyze_video
 
 # Visualizations are shrunk to this width before being sent to the browser.
 MAX_PREVIEW_WIDTH = 1200
@@ -255,29 +256,123 @@ def _compression_category(path: str, metadata: dict, is_image: bool, warnings: l
     return _category(checks, failed=failed)
 
 
-def _video_category(metadata: dict, is_video: bool) -> dict:
-    if not is_video:
-        return _category([], applicable=False, note="Video checks run on videos only.")
-    checks = _metadata_checks(metadata, VIDEO_METADATA_CHECKS)
+def _times(findings: list[dict], limit: int = 5) -> str:
+    """'at 0.67s, 0.70s and 3 more' for a check's message."""
+    times = [f"{f['timestamp']:.2f}s" for f in findings]
+    shown = ", ".join(times[:limit])
+    return f"at {shown}" + (f" and {len(times) - limit} more" if len(times) > limit else "")
+
+
+def _frame_difference_chart(analysis: dict, width: int = 900, height: int = 260) -> str:
+    """Line chart of how much each frame differs from the one before, duplicates marked in red."""
+    comparisons = analysis["comparisons"]
+    times = [c["current_timestamp"] for c in comparisons]
+    differences = [c["mean_pixel_difference"] for c in comparisons]
+    left, right, top, bottom = 50, 15, 30, 35
+    plot_w, plot_h = width - left - right, height - top - bottom
+    t0, t1 = min(times), max(times)
+    peak = max(max(differences), 1e-6)
+
+    def point(t, value):
+        x = left + (t - t0) / ((t1 - t0) or 1) * plot_w
+        return x, top + plot_h - value / peak * plot_h
+
+    chart = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(chart)
+    draw.line([(left, top), (left, top + plot_h), (left + plot_w, top + plot_h)], fill="#888888")
+    draw.line([point(t, v) for t, v in zip(times, differences)], fill="#4a7bd0", width=2)
+    for duplicate in analysis["duplicate_findings"]:
+        x, y = point(duplicate["timestamp"], duplicate["difference_score"])
+        draw.ellipse((x - 4, y - 4, x + 4, y + 4), fill="#d04a4a")
+
+    draw.text((left, 8), "Change from the previous frame (blue); almost identical frames (red)", fill="#333333")
+    draw.text((left, top + plot_h + 8), f"{t0:.1f}s", fill="#333333")
+    draw.text((left + plot_w - 40, top + plot_h + 8), f"{t1:.1f}s", fill="#333333")
+    draw.text((4, top - 4), f"{peak:.0f}", fill="#333333")
+    draw.text((4, top + plot_h - 10), "0", fill="#333333")
+    return _to_data_url(chart)
+
+
+def _frame_checks(analysis: dict) -> list[dict]:
+    """Turn video_analysis's frame-level findings into report checks."""
+    duplicates = analysis["duplicate_findings"]
+    repeated = analysis["repeated_findings"]
+    inserted = analysis["inserted_clip_findings"]
+    jumps = analysis["temporal_findings"]
+    checks = []
+
+    if duplicates:
+        checks.append(_check(
+            "duplicate_frames", "flagged",
+            f"{len(duplicates)} frame(s) are almost identical to the frame before them while the video "
+            f"around them is moving, {_times(duplicates)}. Repeated frames can be used to fill a gap left "
+            "by an edit.", name="Duplicate frames", severity="medium",
+            details={"duplicate_frames": len(duplicates)}, visualization=_frame_difference_chart(analysis)))
+    else:
+        checks.append(_check("duplicate_frames", "passed", "No frozen or repeated single frames found.",
+                             name="Duplicate frames", visualization=_frame_difference_chart(analysis)))
+
+    if repeated:
+        checks.append(_check(
+            "repeated_sequences", "flagged",
+            f"{len(repeated)} stretch(es) of frames appear again later in the video. "
+            f"{repeated[0]['evidence']}.", name="Repeated sequences", severity="medium",
+            details={"repeated_sequences": len(repeated)}))
+    else:
+        checks.append(_check("repeated_sequences", "passed", "No stretch of frames appears twice.",
+                             name="Repeated sequences"))
+
+    if inserted:
+        checks.append(_check(
+            "inserted_clips", "flagged",
+            f"{len(inserted)} short clip(s) may have been cut in. {inserted[0]['evidence']}.",
+            name="Inserted clips", severity="medium", details={"inserted_clips": len(inserted)}))
+    else:
+        checks.append(_check("inserted_clips", "passed", "No short inserted clips found.",
+                             name="Inserted clips"))
+
     checks.append(_check(
-        "frame_detectors", "not_applicable",
-        "Duplicate-frame, temporal-change and per-frame compression detectors are not built yet.",
-        name="Frame-level detectors"))
-    return _category(checks, note="Frame-level detectors are not built yet.")
+        "temporal_changes", "info",
+        (f"{len(jumps)} unusually large jump(s) between frames, {_times(jumps)}. Normal scene cuts also "
+         "cause these, so check them by eye." if jumps else "No unusually large jumps between frames."),
+        name="Sudden changes", details={"sudden_changes": len(jumps)}))
+    return checks
+
+
+def _video_category(path: str, metadata: dict, is_video: bool, warnings: list[str]) -> tuple[dict, int]:
+    """Metadata video checks plus frame-level checks. Returns (category, flagged frame checks)."""
+    if not is_video:
+        return _category([], applicable=False, note="Video checks run on videos only."), 0
+    checks = _metadata_checks(metadata, VIDEO_METADATA_CHECKS)
+    failed = 0
+    try:
+        frame_checks = _frame_checks(analyze_video(path))
+    except Exception as exc:  # noqa: BLE001 - one detector must not break the report
+        failed, frame_checks = 1, []
+        warnings.append(f"Frame-level video analysis failed: {exc}")
+    flagged = sum(c["status"] == "flagged" for c in frame_checks)
+    # Flagged checks first, as in the other categories.
+    checks = sorted(checks + frame_checks, key=lambda c: c["status"] != "flagged")
+    return _category(checks, failed=failed), flagged
 
 
 # ---------------------------------------------------------------------------
 # Verdict
 # ---------------------------------------------------------------------------
 
-LEVELS = ["No signs of editing", "no_strong_evidence", "some_signs", "likely_altered"]
+LEVELS = ["low", "some_signs", "likely_altered"]
 
 
-def verdict(score: float, checks_run: int, copy_move_candidates: int) -> dict:
-    """Combine the metadata score and the pixel checks into one label.
+def verdict(score: float, checks_run: int, copy_move_candidates: int, frame_flags: int = 0) -> dict:
+    """Combine the metadata score and the pixel and frame checks into one label.
 
-    Only the metadata checks produce a calibrated score. Copy-move candidates
+    Only the metadata checks produce a calibrated score: 0.3 and above is some_signs,
+    0.6 and above likely_altered. Copy-move candidates and flagged frame checks
     raise the label by one level, because they are visual evidence of editing.
+
+    Below 0.3, the label says how much the metadata showed: no_strong_evidence when
+    the score is exactly 0, no_signs when there were only weak clues. With too few
+    checks to judge, it is inconclusive instead.
     """
     if score >= 0.6:
         level = 2
@@ -285,14 +380,17 @@ def verdict(score: float, checks_run: int, copy_move_candidates: int) -> dict:
         level = 1
     else:
         level = 0
-    if copy_move_candidates:
+    if copy_move_candidates or frame_flags:
         level = min(level + 1, 2)
 
     label = LEVELS[level]
-    if level == 0 and checks_run <= FEW_CHECKS:
-        label = "inconclusive"
-    elif level == 0 and checks_run > FEW_CHECKS:
-        label = "No signs of editing"
+    if level == 0:
+        if checks_run <= FEW_CHECKS:
+            label = "inconclusive"
+        elif score == 0:
+            label = "no_strong_evidence"
+        else:
+            label = "no_signs"
     return {"label": label, "score": score}
 
 
@@ -314,17 +412,18 @@ def analyze(path: str | os.PathLike, original_modified: datetime | None = None,
     warnings = list(metadata["warnings"])
 
     image, candidates = _image_category(path, is_image, warnings)
+    video, frame_flags = _video_category(path, metadata, is_video, warnings)
     categories = {
         "metadata_analysis": _metadata_category(metadata),
         "image_analysis": image,
         "compression_analysis": _compression_category(path, metadata, is_image, warnings),
-        "video_analysis": _video_category(metadata, is_video),
+        "video_analysis": video,
     }
 
     return _json_safe({
         "file_name": display_name or os.path.basename(path),
         "media_type": media_type,
-        "verdict": verdict(metadata["score"], metadata["checks_run"], candidates),
+        "verdict": verdict(metadata["score"], metadata["checks_run"], candidates, frame_flags),
         "categories": categories,
         "warnings": warnings,
     })

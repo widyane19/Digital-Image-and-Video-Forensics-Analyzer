@@ -356,6 +356,7 @@ p {
 
 .verdict-likely_altered { --tone: var(--high); }
 .verdict-some_signs { --tone: var(--medium); }
+.verdict-no_signs { --tone: var(--low); }
 .verdict-no_strong_evidence { --tone: var(--low); }
 .verdict-inconclusive { --tone: var(--info); }
 
