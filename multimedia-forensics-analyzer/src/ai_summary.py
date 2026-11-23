@@ -40,6 +40,7 @@ Never claim certainty. Say "evidence of editing" or "signs of alteration", never
 VERDICT_TEXT = {
     "likely_altered": "likely altered",
     "some_signs": "showing some signs of alteration",
+    "no_signs": "showing no signs of editing",
     "no_strong_evidence": "showing no strong evidence of alteration",
     "inconclusive": "inconclusive",
 }

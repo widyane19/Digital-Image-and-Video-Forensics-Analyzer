@@ -165,7 +165,8 @@ def test_analyze_image_returns_four_categories():
     assert body["file_name"] == "photo.jpg"
     assert body["media_type"] == "image"
     assert set(body["categories"]) == CATEGORIES
-    assert body["verdict"]["label"] in {"likely_altered", "some_signs", "no_strong_evidence", "inconclusive"}
+    assert body["verdict"]["label"] in {"likely_altered", "some_signs", "no_signs", "no_strong_evidence",
+                                      "inconclusive"}
     assert 0 <= body["verdict"]["score"] <= 1
 
     for category in body["categories"].values():

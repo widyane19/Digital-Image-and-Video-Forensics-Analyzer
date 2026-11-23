@@ -48,6 +48,7 @@ export const CHECK_STATUS_LABELS: Record<CheckStatus, string> = {
 export const VERDICT_LABELS: Record<VerdictLabel, string> = {
   likely_altered: 'Likely altered',
   some_signs: 'Some signs of alteration',
+  no_signs: 'No signs of editing',
   no_strong_evidence: 'No strong evidence of alteration',
   inconclusive: 'Inconclusive',
 }

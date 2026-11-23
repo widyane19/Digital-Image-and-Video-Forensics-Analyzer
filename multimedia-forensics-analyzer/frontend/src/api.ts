@@ -3,7 +3,7 @@
 export type Severity = 'info' | 'low' | 'medium' | 'high'
 export type CheckStatus = 'flagged' | 'passed' | 'not_applicable' | 'info'
 export type CategoryStatus = 'flagged' | 'clear' | 'not_applicable' | 'error'
-export type VerdictLabel = 'likely_altered' | 'some_signs' | 'no_strong_evidence' | 'inconclusive'
+export type VerdictLabel = 'likely_altered' | 'some_signs' | 'no_signs' | 'no_strong_evidence' | 'inconclusive'
 export type CategoryKey =
   | 'metadata_analysis'
   | 'image_analysis'

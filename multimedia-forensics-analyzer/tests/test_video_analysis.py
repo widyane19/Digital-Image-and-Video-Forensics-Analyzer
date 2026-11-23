@@ -45,7 +45,7 @@ def sample_videos(tmp_path):
     normal = []
 
     for i in range(30):
-        frame = np.zeros((height, width, 3), dtype=np.int8)
+        frame = np.zeros((height, width, 3), dtype=np.uint8)
         cv2.circle(frame, (30 + i * 3, 60), 12, (255, 255, 255), -1)
         normal.append(frame)
 
