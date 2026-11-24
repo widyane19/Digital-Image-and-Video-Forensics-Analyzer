@@ -15,6 +15,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -22,6 +23,10 @@ from fastapi.staticfiles import StaticFiles
 from src.metadata.metadata_extraction import UnsupportedMediaError
 from src.ai_summary import summarize
 from src.pipeline import analyze
+
+# Read the API key from .env (kept out of Git). Variables already set in the
+# terminal take precedence.
+load_dotenv(Path(__file__).parent / ".env")
 
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024
 FRONTEND_DIST = Path(__file__).parent / "frontend" / "dist"

@@ -1,10 +1,14 @@
 """Tests for the web API (app.py), the four-category pipeline (src/pipeline.py)
 and the AI summary (src/ai_summary.py).
 
-The Claude API is never called: the summary tests use a fake client.
-Tests that analyse real files are skipped when ExifTool is not installed.
+The live summary tests call the real Claude API with the key from .env (or the
+ANTHROPIC_API_KEY variable) and are skipped when no key is set. Error paths
+(connection failure, refusal) use a fake client, because a real API can't be
+made to fail on demand. Tests that analyse real files are skipped when ExifTool
+is not installed.
 """
 
+import os
 import shutil
 from io import BytesIO
 from types import SimpleNamespace
@@ -23,6 +27,11 @@ from src.pipeline import verdict  # noqa: E402
 
 requires_exiftool = pytest.mark.skipif(
     shutil.which("exiftool") is None, reason="ExifTool is not installed or not on PATH"
+)
+
+requires_api_key = pytest.mark.skipif(
+    os.environ.get("ANTHROPIC_API_KEY", "your-key-here") in ("", "your-key-here"),
+    reason="No Claude API key: put it in .env to run the live summary tests",
 )
 
 client = TestClient(app)
@@ -106,24 +115,39 @@ class TestVerdict:
 
 
 # ---------------------------------------------------------------------------
-# AI summary (fake client, never the real API)
+# AI summary: the real Claude API
 # ---------------------------------------------------------------------------
 
-class TestSummary:
-    def test_generated_summary(self):
-        fake, messages = _fake_client(response=_text_response("This photo shows signs of editing."))
-        result = ai_summary.summarize(_report(), client=fake)
+@requires_api_key
+class TestLiveSummary:
+    def test_real_client_writes_a_summary(self):
+        result = ai_summary.summarize(_report())
 
-        assert result["generated"] is True
-        assert result["text"] == "This photo shows signs of editing."
+        assert result["generated"] is True, result["note"]
+        assert result["model"].startswith("claude-")
+        assert len(result["text"].split()) > 20
+        assert "GIMP" in result["text"]  # explains the flagged check with its value
         assert [r["check"] for r in result["reasons"]] == ["Editing software"]
 
-        sent = messages.calls[0]
-        assert sent["model"] == "claude-opus-5-5"
-        assert sent["fallbacks"] == "default"
-        prompt = sent["messages"][0]["content"]
+    def test_summary_endpoint_uses_the_real_client(self):
+        response = client.post("/api/summary", json=_report())
+        assert response.status_code == 200
+        body = response.json()
+        assert body["generated"] is True, body["note"]
+        assert body["text"]
+
+
+# ---------------------------------------------------------------------------
+# AI summary: error paths (fake client, since the real API can't fail on demand)
+# ---------------------------------------------------------------------------
+
+class TestSummaryFallbacks:
+    def test_images_are_never_sent(self):
+        fake, messages = _fake_client(response=_text_response("ok"))
+        ai_summary.summarize(_report(), client=fake)
+        prompt = messages.calls[0]["messages"][0]["content"]
         assert "<analysis_results>" in prompt and "GIMP" in prompt
-        assert "base64" not in prompt  # images are never sent
+        assert "base64" not in prompt
 
     def test_connection_error_falls_back_to_template(self):
         error = anthropic.APIConnectionError(request=SimpleNamespace(method="POST", url="x"))

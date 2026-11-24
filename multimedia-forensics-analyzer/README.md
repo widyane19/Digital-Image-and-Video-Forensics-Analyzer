@@ -313,6 +313,12 @@ The app has two parts: a FastAPI backend (`app.py`) and a React + TypeScript fro
 
 - *(Optional)* An Anthropic API key for the AI-written summaries. Without it, the app still runs and shows a basic fallback summary.
 
+  Copy `.env.example` to `.env` in the `multimedia-forensics-analyzer` folder, then replace `your-key-here` with your key. The app reads `.env` when it starts. `.gitignore` keeps `.env` out of Git, so the key is never committed.
+
+  > **Never put the key in `.gitignore`, `.env.example` or any other committed file.**
+
+  Alternatively, set it for the current terminal only:
+
   ```bash
   # Windows (PowerShell)
   $env:ANTHROPIC_API_KEY = "your-key"
