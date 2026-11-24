@@ -1,5 +1,10 @@
 __pycache__/
 
+# Secrets: API keys live in .env, which must never be committed.
+# .env.example (no real key) stays, to show the format.
+.env
+!.env.example
+
 # Media in the dataset: too large (and too personal) for Git. Label files and
 # data/SOURCES.md stay, so the team can rebuild the same dataset.
 data/originals/
