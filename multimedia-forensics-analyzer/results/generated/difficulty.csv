@@ -1,9 +1,10 @@
 rank,manipulation_type,detector_recall,best_technique,best_technique_recall
 1,copy_move,1.0,image.copy_move,1.0
-2,crop,1.0,metadata.compression_settings,1.0
-3,frame_duplication,1.0,metadata.editing_software,1.0
-4,frame_insertion,1.0,metadata.editing_software,1.0
-5,frame_removal,1.0,metadata.editing_software,1.0
-6,metadata_edit,1.0,image.copy_move,1.0
-7,recompress,1.0,metadata.compression_settings,1.0
-8,splice,1.0,image.copy_move,1.0
+2,copy_move_small,1.0,metadata.compression_settings,1.0
+3,crop,1.0,metadata.compression_settings,1.0
+4,frame_duplication,1.0,metadata.editing_software,1.0
+5,frame_insertion,1.0,metadata.editing_software,1.0
+6,frame_removal,1.0,metadata.editing_software,1.0
+7,metadata_edit,1.0,metadata.editing_software,1.0
+8,recompress,1.0,metadata.compression_settings,1.0
+9,splice,1.0,metadata.compression_settings,1.0

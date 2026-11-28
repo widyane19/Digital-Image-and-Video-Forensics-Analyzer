@@ -93,6 +93,42 @@ def test_copy_move_detector_rejects_invalid_parameters(copy_move_image):
     path, _, _ = copy_move_image
     with pytest.raises(ValueError, match="min_matches"):
         orb_copy_move_detection(path, min_matches=1)
+    with pytest.raises(ValueError, match="ratio"):
+        orb_copy_move_detection(path, ratio=1.5)
+    with pytest.raises(ValueError, match="min_displacement_fraction"):
+        orb_copy_move_detection(path, min_displacement_fraction=-0.1)
+
+
+def test_copy_move_detector_finds_the_copied_patch_with_defaults(copy_move_image):
+    path, source, destination = copy_move_image
+    candidates = orb_copy_move_detection(path)["candidate_regions"]
+
+    assert candidates, "the exact copied patch should be found"
+    best = candidates[0]
+    assert region_iou(best["source"], source) > 0.3
+    assert region_iou(best["destination"], destination) > 0.3
+
+
+@pytest.fixture
+def tiled_image(tmp_path):
+    """An unedited 'tiled floor': one textured tile repeated in a grid.
+
+    Real repeated texture is never pixel-identical (sensor noise, lighting), so each
+    tile gets its own noise. A pasted copy, by contrast, is an exact duplicate.
+    """
+    rng = np.random.default_rng(7)
+    tile = cv2.GaussianBlur(rng.integers(0, 256, size=(40, 40, 3), dtype=np.uint8), (3, 3), 0)
+    floor = np.tile(tile, (8, 8, 1)).astype(float) + rng.normal(0, 20, size=(320, 320, 3))
+    path = tmp_path / "tiles.png"
+    Image.fromarray(np.clip(floor, 0, 255).astype(np.uint8)).save(path)
+    return path
+
+
+def test_repeated_texture_is_not_mistaken_for_copy_move(tiled_image):
+    old_settings = dict(min_matches=6, max_distance=55, ratio=None, min_displacement_fraction=0)
+    assert orb_copy_move_detection(tiled_image, **old_settings)["candidate_regions"]
+
+    assert orb_copy_move_detection(tiled_image)["candidate_regions"] == []
 
 
 def test_edge_texture_analysis_returns_valid_measurements(copy_move_image):

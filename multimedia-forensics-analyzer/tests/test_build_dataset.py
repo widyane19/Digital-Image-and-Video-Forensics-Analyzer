@@ -141,6 +141,22 @@ def test_copy_move_changes_one_patch_sized_area(dataset):
     assert rows.max() - rows.min() <= patch + 16 and cols.max() - cols.min() <= patch + 16
 
 
+def test_small_copy_move_is_extra_and_half_the_size(dataset):
+    import numpy as np  # pylint: disable=import-outside-toplevel
+
+    data, rows, _ = dataset
+    small = [r for r in rows if r.manipulation_type == "copy_move_small"]
+    assert len(small) == 1                          # as many as each rotation type (5 photos / 5 types)
+    edited = data / small[0].file
+    original = data / "originals" / "images" / edited.name.replace("_copy_move_small", "")
+    difference = np.abs(_pixels(original) - _pixels(edited)).max(axis=2)
+    rows_changed, cols_changed = np.nonzero(difference > 60)
+    patch = min(640, 480) // 10
+    assert rows_changed.size
+    assert rows_changed.max() - rows_changed.min() <= patch + 16
+    assert cols_changed.max() - cols_changed.min() <= patch + 16
+
+
 def test_frame_removal_leaves_a_gap(dataset):
     import numpy as np  # pylint: disable=import-outside-toplevel
 

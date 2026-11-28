@@ -9,7 +9,9 @@ This creates modified copies in data/manipulated/<type>/ and writes data/labels.
 from scratch, listing every original and every modified copy with its type.
 
     Images: one modified copy each, with the types taken in turn so each type gets
-            about the same number of files.
+            about the same number of files. Then a harder copy-move (a smaller patch
+            from a random textured area) is made for as many randomly chosen photos as
+            each of those types got, so the rest of the dataset stays unchanged.
     Videos: one modified copy per video type.
 
 Every modified file gets the original's metadata copied back with ExifTool, as a
@@ -33,6 +35,7 @@ import numpy as np
 from PIL import Image
 
 IMAGE_TYPES = ("crop", "copy_move", "splice", "recompress", "metadata_edit")
+EXTRA_IMAGE_TYPES = ("copy_move_small",)  # made after the rest, on randomly chosen photos
 VIDEO_TYPES = ("frame_removal", "frame_duplication", "frame_insertion")
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp"}
@@ -106,6 +109,17 @@ def build_dataset(data_dir: str | Path, seed: int = DEFAULT_SEED,
                     continue
                 rows.append(LabelRow(_relative(target, data_dir), "manipulated", kind))
 
+        # Made last so the random choices above (and so their files) don't change.
+        per_type = len(images) // len(image_types) if images else 0
+        for kind in EXTRA_IMAGE_TYPES:
+            for source in sorted(rng.sample(images, per_type)):
+                try:
+                    target = _make_image(source, kind, out_dir, rng, source, et)
+                except (OSError, ValueError) as exc:
+                    warnings.append(f"{source.name}: could not make {kind} ({exc})")
+                    continue
+                rows.append(LabelRow(_relative(target, data_dir), "manipulated", kind))
+
     if len(images) == 1:
         warnings.append("Only one original image, so no splice copies were made (splicing needs two).")
     if len(videos) == 1:
@@ -161,6 +175,8 @@ def _make_image(source: Path, kind: str, out_dir: Path, rng: random.Random, dono
         picture = _crop(picture, rng)
     elif kind == "copy_move":
         picture = _copy_move(picture, rng)
+    elif kind == "copy_move_small":
+        picture = _copy_move_small(picture, rng)
     elif kind == "splice":
         with Image.open(donor) as other:
             picture = _splice(picture, other.convert("RGB"), rng)
@@ -219,6 +235,26 @@ def _copy_move(picture: Image.Image, rng: random.Random) -> Image.Image:
     picture = picture.copy()
     picture.paste(patch, _free_spot(picture, size, (left, top), rng))
     return picture
+
+
+def _copy_move_small(picture: Image.Image, rng: random.Random) -> Image.Image:
+    """A harder copy-move: a block half as wide, from a random spot with above-average detail."""
+    size = max(8, min(picture.size) // 10)
+    left, top = _random_textured_patch(picture, size, rng)
+    patch = picture.crop((left, top, left + size, top + size))
+    picture = picture.copy()
+    picture.paste(patch, _free_spot(picture, size, (left, top), rng))
+    return picture
+
+
+def _random_textured_patch(picture: Image.Image, size: int, rng: random.Random) -> tuple[int, int]:
+    """Top-left corner of a random size x size block from the more detailed half of the image."""
+    gray = np.asarray(picture.convert("L"), dtype=np.float32)
+    blocks = [(float(gray[top:top + size, left:left + size].var()), (left, top))
+              for top in range(0, gray.shape[0] - size + 1, size)
+              for left in range(0, gray.shape[1] - size + 1, size)]
+    median = float(np.median([variance for variance, _ in blocks]))
+    return rng.choice([corner for variance, corner in blocks if variance >= median])
 
 
 def _splice(picture: Image.Image, donor: Image.Image, rng: random.Random) -> Image.Image:

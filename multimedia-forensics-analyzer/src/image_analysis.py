@@ -36,18 +36,28 @@ def _bounding_box(points, padding, width, height):
     return (x1, y1, x2 - x1, y2 - y1)
 
 
-def orb_copy_move_detection(image_path, min_matches=6, min_displacement=20, max_distance=55):
+def orb_copy_move_detection(image_path, min_matches=15, min_displacement=20, max_distance=40,
+                            ratio=0.8, min_displacement_fraction=0.05):
     """Find possible duplicated regions using ORB feature self-matching.
 
-    Returned boxes are candidates for human review, not proof of copy-move editing.
-    Repeated patterns can produce false positives; smooth regions may be missed.
+    - ratio: a match counts only if it is clearly closer than the next-best one (uniqueness test).
+    - max_distance: the most descriptor bits (of 256) two matching points may differ by.
+    - min_displacement / min_displacement_fraction: the copy must be at least this many
+      pixels, and this fraction of the image's short side, away from its source, so
+      neighbouring texture is ignored.
+    - min_matches: matching points needed, all moved the same way, to report a region.
     """
     if min_matches < 2 or min_displacement < 1 or max_distance <= 0:
         raise ValueError("Use min_matches >= 2, min_displacement >= 1, and max_distance > 0.")
+    if ratio is not None and not 0 < ratio <= 1:
+        raise ValueError("Use a ratio between 0 and 1, or None to turn the uniqueness test off.")
+    if min_displacement_fraction < 0:
+        raise ValueError("Use min_displacement_fraction >= 0.")
 
     rgb = np.asarray(load_image(image_path))
     gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
     height, width = gray.shape
+    min_displacement = max(min_displacement, min_displacement_fraction * min(height, width))
     detector = cv2.ORB_create(nfeatures=4000)
     keypoints, descriptors = detector.detectAndCompute(gray, None)
     empty_result = {"match_count": 0, "candidate_regions": [], "matches": []}
@@ -60,10 +70,15 @@ def orb_copy_move_detection(image_path, min_matches=6, min_displacement=20, max_
     groups = {}
     seen_pairs = set()
     for query_index, neighbors in enumerate(neighbor_lists):
-        for match in neighbors:
+        neighbors = [match for match in neighbors if match.trainIdx != query_index]
+        for position, match in enumerate(neighbors):
             train_index = match.trainIdx
-            if query_index == train_index or match.distance > max_distance:
-                continue
+            if match.distance > max_distance:
+                break  # Neighbours are sorted, so the rest are even less similar.
+            runner_up = neighbors[position + 1] if position + 1 < len(neighbors) else None
+            # An equally good lookalike (ties included) means repeated texture, not a copy.
+            if ratio is not None and runner_up and match.distance >= ratio * runner_up.distance:
+                break
             pair = tuple(sorted((query_index, train_index)))
             if pair in seen_pairs:
                 continue
